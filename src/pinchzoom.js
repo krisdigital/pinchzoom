@@ -12,7 +12,6 @@
 (function () {
     'use strict';
     var definePinchZoom = function ($) {
-
         /**
          * Pinch zoom using jQuery
          * @version 0.0.2
@@ -21,6 +20,7 @@
          * @param options
          * @constructor
          */
+        
         var PinchZoom = function (el, options) {
                 this.el = $(el);
                 this.zoomFactor = 1;
@@ -33,7 +33,7 @@
                 this.setupMarkup();
                 this.bindEvents();
                 this.update();
-
+                
             },
             sum = function (a, b) {
                 return a + b;
@@ -100,7 +100,6 @@
              * @param event
              */
             handleZoom: function (event, newScale) {
-
                 // a relative scale factor is used
                 var touchCenter = this.getTouchCenter(this.getTouches(event)),
                     scale = newScale / this.lastScale;
@@ -368,7 +367,8 @@
              */
             getTouches: function (event) {
                 var position = this.container.offset();
-                return Array.prototype.slice.call(event.touches).map(function (touch) {
+                var currentTouches = window.navigator.msPointerEnabled ? this.getIETouches() : event.touches;
+                return Array.prototype.slice.call(currentTouches).map(function (touch) {
                     return {
                         x: touch.pageX - position.left,
                         y: touch.pageY - position.top
@@ -549,6 +549,8 @@
                 fingers = 0,
                 lastTouchStart = null,
                 startTouches = null,
+                isIE = window.navigator.msPointerEnabled,
+                iePointers = new Array(),
 
                 setInteraction = function (newInteraction, event) {
                     if (interaction !== newInteraction) {
@@ -638,26 +640,55 @@
                         lastTouchStart = time;
                     }
                 },
+                countIE = function() {
+                  var count = 0;
+                  
+                  for(var key in iePointers) {
+                    var event = iePointers[key];
+                    if(event.touching) count++;
+                  }
+                  return count;
+                },
+                getIETouches = function() {
+                  var touches = new Array();
+                  
+                  for(var key in iePointers) {
+                    var event = iePointers[key];
+                    if(event.touching) touches.push($.extend({}, event));
+                  }
+                  return touches;
+                },
                 firstMove = true;
-
-            el.addEventListener('touchstart', function (event) {
+                
+            target.getIETouches = getIETouches;
+                
+            el.addEventListener(isIE ? 'MSPointerDown' : 'touchstart', function (event) {
                 firstMove = true;
-                fingers = event.touches.length;
+                if(!isIE) fingers = event.touches.length;
+                else {
+                  event.touching = true;
+                  iePointers[event.pointerId] = event;
+                  fingers = countIE();
+                }
                 detectDoubleTap(event);
-            });
+            }, false);
 
-            el.addEventListener('touchmove', function (event) {
-
+            el.addEventListener(isIE ? 'MSPointerMove' : 'touchmove', function (event) {
+                event.touching = true;
+                iePointers[event.pointerId] = event;
+                
                 if (firstMove) {
                     updateInteraction(event);
                     if (interaction) {
                         cancelEvent(event);
                     }
-                    startTouches = targetTouches(event.touches);
+                    if(!isIE) startTouches = targetTouches(event.touches);
+                    else startTouches = targetTouches(getIETouches());
                 } else {
                     switch (interaction) {
                         case 'zoom':
-                            target.handleZoom(event, calculateScale(startTouches, targetTouches(event.touches)));
+                            var currentTouches = isIE ? getIETouches() : event.touches;
+                            target.handleZoom(event, calculateScale(startTouches, targetTouches(currentTouches)));
                             break;
                         case 'drag':
                             target.handleDrag(event);
@@ -670,12 +701,17 @@
                 }
 
                 firstMove = false;
-            });
+            }, false);
 
-            el.addEventListener('touchend', function (event) {
-                fingers = event.touches.length;
+            el.addEventListener(isIE ? 'MSPointerUp' : 'touchend', function (event) {
+                if(!isIE) fingers = event.touches.length;
+                else {
+                  event.touching = false;
+                  iePointers[event.pointerId] = event;
+                  fingers = countIE();
+                }
                 updateInteraction(event);
-            });
+            }, false);
         };
 
         return PinchZoom;
